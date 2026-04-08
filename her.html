@@ -726,14 +726,17 @@ async function speakText(text) {
         return;
       } else {
         const err = await response.text();
+        showError(`11labs ${response.status}: ${err.slice(0,80)}`);
         console.warn('ElevenLabs direct failed:', response.status, err);
       }
     } catch (err) {
+      showError(`11labs err: ${err.message.slice(0,80)}`);
       console.warn('ElevenLabs direct error:', err.message);
     }
   }
 
   // Fallback to browser TTS
+  showError('using browser TTS');
   await browserTTS(text);
   resetState();
 }
