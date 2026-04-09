@@ -726,6 +726,7 @@ async function speakText(text) {
   }
 
   // Fallback to browser TTS
+  await new Promise(r => setTimeout(r, 3000)); // pause so error is readable
   showError('using browser TTS');
   await browserTTS(text);
   resetState();
