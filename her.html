@@ -235,16 +235,21 @@
   }
   .error-msg.visible { display: block; }
 
-  /* Config panel (hidden in prod) */
+  /* Config panel — hidden until gear is tapped */
   .config {
     position: fixed;
-    bottom: 1.5rem;
+    bottom: 3.5rem;
     right: 1.5rem;
-    display: flex;
+    display: none;
     flex-direction: column;
     gap: 0.5rem;
     z-index: 10;
+    background: var(--surface);
+    border: 1px solid var(--text-muted);
+    border-radius: 4px;
+    padding: 1rem;
   }
+  .config.open { display: flex; }
   .config input {
     background: var(--surface);
     border: 1px solid var(--text-muted);
@@ -317,16 +322,35 @@
   /* ── Mobile layout ── */
   @media (max-width: 600px) {
     .config {
-      position: static;
-      width: 100%;
-      padding: 1rem 1.2rem 2rem;
-      border-top: 1px solid var(--text-muted);
-      margin-top: 1rem;
+      position: fixed;
+      bottom: 3.5rem;
+      right: 1rem;
+      left: 1rem;
+      width: auto;
+      padding: 1rem;
     }
     .config input { width: 100%; font-size: 0.75rem; box-sizing: border-box; }
     .memory-indicator { bottom: 1.2rem; left: 1rem; }
   }
-  #config-toggle { display: none; }
+  #config-toggle {
+    position: fixed;
+    bottom: 1.5rem;
+    right: 1.5rem;
+    background: none;
+    border: 1px solid var(--text-muted);
+    color: var(--text-muted);
+    font-size: 0.9rem;
+    width: 2rem;
+    height: 2rem;
+    border-radius: 50%;
+    cursor: pointer;
+    z-index: 11;
+    display: flex;
+    align-items: center;
+    justify-content: center;
+    transition: border-color 0.2s, color 0.2s;
+  }
+  #config-toggle:hover { border-color: var(--warm-dim); color: var(--warm-dim); }
 </style>
 </head>
 <body>
@@ -361,7 +385,7 @@
   <button onclick="clearMemory()">clear</button>
 </div>
 
-<!-- Config panel — remove before deploying to Vercel, use config.js instead -->
+<!-- Config panel -->
 <div class="config">
   <div class="config-group">
     <label>Claude API Key</label>
@@ -692,7 +716,6 @@ async function speakText(text) {
 
   // Try ElevenLabs directly from browser first
   if (elevenKey) {
-    showError(`trying 11labs, key: ${elevenKey.slice(0,8)}...`);
     try {
       const response = await fetch(`https://api.elevenlabs.io/v1/text-to-speech/${voiceId}`, {
         method: 'POST',
@@ -717,18 +740,14 @@ async function speakText(text) {
         return;
       } else {
         const err = await response.text();
-        showError(`11labs ${response.status}: ${err.slice(0,80)}`);
         console.warn('ElevenLabs direct failed:', response.status, err);
       }
     } catch (err) {
-      showError(`11labs err: ${err.message.slice(0,80)}`);
       console.warn('ElevenLabs direct error:', err.message);
     }
   }
 
   // Fallback to browser TTS
-  await new Promise(r => setTimeout(r, 3000)); // pause so error is readable
-  showError('using browser TTS');
   await browserTTS(text);
   resetState();
 }
