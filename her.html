@@ -687,7 +687,7 @@ async function speakText(text) {
   setBodyState('speaking');
   setStatus('speaking...');
 
-  const elevenKey = getKey('elevenKey') || 'sk_bb5fcaeb176f011239ef36b7b00753e350de919cd43767a1';
+  const elevenKey = 'sk_bb5fcaeb176f011239ef36b7b00753e350de919cd43767a1';
   const voiceId = document.getElementById('voiceId').value.trim() || 'EXAVITQu4vr4xnSDxMaL';
 
   // Try ElevenLabs directly from browser first
