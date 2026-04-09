@@ -1,0 +1,393 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+<meta charset="UTF-8">
+<meta name="viewport" content="width=device-width, initial-scale=1.0">
+<title>ElevenLabs Diagnostic</title>
+<style>
+  * { box-sizing: border-box; margin: 0; padding: 0; }
+
+  body {
+    background: #0a0a0f;
+    color: #e8e8f0;
+    font-family: 'Courier New', monospace;
+    min-height: 100vh;
+    display: flex;
+    flex-direction: column;
+    align-items: center;
+    justify-content: flex-start;
+    padding: 32px 20px;
+    gap: 20px;
+  }
+
+  h1 {
+    font-size: 1.1rem;
+    letter-spacing: 0.15em;
+    color: #8b8bff;
+    text-transform: uppercase;
+    text-align: center;
+  }
+
+  .subtitle {
+    font-size: 0.75rem;
+    color: #555;
+    letter-spacing: 0.1em;
+    text-align: center;
+  }
+
+  .card {
+    background: #12121a;
+    border: 1px solid #2a2a3a;
+    border-radius: 12px;
+    padding: 20px;
+    width: 100%;
+    max-width: 480px;
+  }
+
+  .card label {
+    display: block;
+    font-size: 0.7rem;
+    letter-spacing: 0.12em;
+    color: #666;
+    text-transform: uppercase;
+    margin-bottom: 8px;
+  }
+
+  input, textarea {
+    width: 100%;
+    background: #0a0a10;
+    border: 1px solid #2a2a3a;
+    border-radius: 8px;
+    color: #e8e8f0;
+    font-family: 'Courier New', monospace;
+    font-size: 0.85rem;
+    padding: 10px 12px;
+    outline: none;
+    transition: border-color 0.2s;
+  }
+
+  input:focus, textarea:focus {
+    border-color: #8b8bff;
+  }
+
+  textarea {
+    resize: vertical;
+    min-height: 80px;
+  }
+
+  .btn {
+    width: 100%;
+    max-width: 480px;
+    padding: 16px;
+    background: #8b8bff;
+    color: #0a0a0f;
+    font-family: 'Courier New', monospace;
+    font-size: 0.9rem;
+    font-weight: bold;
+    letter-spacing: 0.1em;
+    text-transform: uppercase;
+    border: none;
+    border-radius: 12px;
+    cursor: pointer;
+    transition: background 0.2s, transform 0.1s;
+  }
+
+  .btn:active { transform: scale(0.98); }
+  .btn:disabled { background: #333; color: #555; cursor: not-allowed; }
+
+  .btn.secondary {
+    background: transparent;
+    color: #8b8bff;
+    border: 1px solid #8b8bff;
+    margin-top: 0;
+  }
+
+  #log {
+    width: 100%;
+    max-width: 480px;
+    background: #0a0a10;
+    border: 1px solid #2a2a3a;
+    border-radius: 12px;
+    padding: 16px;
+    min-height: 200px;
+    max-height: 50vh;
+    overflow-y: auto;
+    font-size: 0.78rem;
+    line-height: 1.7;
+  }
+
+  .log-entry {
+    padding: 3px 0;
+    border-bottom: 1px solid #1a1a22;
+  }
+
+  .log-entry:last-child { border-bottom: none; }
+
+  .log-ts { color: #444; margin-right: 8px; }
+  .log-info { color: #7ec8e3; }
+  .log-success { color: #7effa0; }
+  .log-error { color: #ff7e7e; }
+  .log-warn { color: #ffd97e; }
+
+  .status-dot {
+    display: inline-block;
+    width: 8px; height: 8px;
+    border-radius: 50%;
+    margin-right: 8px;
+    background: #333;
+  }
+  .status-dot.ok { background: #7effa0; box-shadow: 0 0 6px #7effa0; }
+  .status-dot.err { background: #ff7e7e; box-shadow: 0 0 6px #ff7e7e; }
+  .status-dot.pending { background: #ffd97e; animation: pulse 1s infinite; }
+
+  @keyframes pulse { 0%,100%{opacity:1} 50%{opacity:0.3} }
+
+  .status-row {
+    display: flex;
+    align-items: center;
+    font-size: 0.75rem;
+    color: #888;
+    margin-top: 8px;
+  }
+
+  #audio-player {
+    width: 100%;
+    max-width: 480px;
+    display: none;
+    margin-top: 4px;
+  }
+</style>
+</head>
+<body>
+
+<h1>ElevenLabs Diagnostic</h1>
+<p class="subtitle">iPhone · Chrome · Vercel</p>
+
+<!-- Config -->
+<div class="card">
+  <label>API Key</label>
+  <input type="text" id="apiKey" value="sk_bb5fcaeb176f011239ef36b7b00753e350de919cd43767a1" autocomplete="off" spellcheck="false" />
+
+  <label style="margin-top:14px">Voice ID</label>
+  <input type="text" id="voiceId" value="EXAVITQu4vr4xnSDxMaL" autocomplete="off" spellcheck="false" />
+
+  <label style="margin-top:14px">Test Text</label>
+  <textarea id="testText">Hello Thomas. ElevenLabs is working correctly.</textarea>
+</div>
+
+<!-- Primary action -->
+<button class="btn" id="testBtn" onclick="runFullTest()">Run Diagnostic Test</button>
+<button class="btn secondary" id="browserBtn" onclick="testBrowserTTS()">Test Browser TTS (Baseline)</button>
+
+<audio id="audio-player" controls></audio>
+
+<!-- Log -->
+<div id="log"><div class="log-entry"><span class="log-ts">--:--:--</span><span class="log-info">Ready. Tap "Run Diagnostic Test" to begin.</span></div></div>
+
+<script>
+const logEl = document.getElementById('log');
+const audioEl = document.getElementById('audio-player');
+
+function ts() {
+  const d = new Date();
+  return `${String(d.getHours()).padStart(2,'0')}:${String(d.getMinutes()).padStart(2,'0')}:${String(d.getSeconds()).padStart(2,'0')}`;
+}
+
+function log(msg, type = 'info') {
+  const entry = document.createElement('div');
+  entry.className = 'log-entry';
+  entry.innerHTML = `<span class="log-ts">${ts()}</span><span class="log-${type}">${msg}</span>`;
+  logEl.appendChild(entry);
+  logEl.scrollTop = logEl.scrollHeight;
+}
+
+function clearLog() {
+  logEl.innerHTML = '';
+}
+
+async function runFullTest() {
+  clearLog();
+  const btn = document.getElementById('testBtn');
+  btn.disabled = true;
+  btn.textContent = 'Testing...';
+
+  const apiKey = document.getElementById('apiKey').value.trim();
+  const voiceId = document.getElementById('voiceId').value.trim();
+  const text = document.getElementById('testText').value.trim();
+
+  // ── Step 1: Input validation ───────────────────────────────────────────────
+  log('STEP 1 — Input validation', 'info');
+  if (!apiKey) { log('❌ API key is empty', 'error'); done(btn); return; }
+  if (!apiKey.startsWith('sk_')) { log('⚠️ API key doesn\'t start with sk_ — may be wrong format', 'warn'); }
+  else { log('✅ API key format looks correct (sk_...)', 'success'); }
+  if (!voiceId) { log('❌ Voice ID is empty', 'error'); done(btn); return; }
+  log(`✅ Voice ID: ${voiceId}`, 'success');
+  log(`✅ Text length: ${text.length} chars`, 'success');
+
+  // ── Step 2: User info endpoint ─────────────────────────────────────────────
+  log('', 'info');
+  log('STEP 2 — Checking account via /v1/user', 'info');
+  try {
+    const userRes = await fetch('https://api.elevenlabs.io/v1/user', {
+      headers: { 'xi-api-key': apiKey }
+    });
+    log(`HTTP status: ${userRes.status} ${userRes.statusText}`, userRes.ok ? 'success' : 'error');
+
+    const userJson = await userRes.json();
+    log(`Raw response: ${JSON.stringify(userJson).slice(0, 300)}`, 'info');
+
+    if (userRes.status === 401) {
+      log('❌ 401 Unauthorized — API key is invalid or expired', 'error');
+      done(btn); return;
+    }
+    if (userRes.status === 403) {
+      log('❌ 403 Forbidden — key may lack permissions', 'error');
+      done(btn); return;
+    }
+    if (userRes.ok) {
+      const charLeft = userJson?.subscription?.character_limit - userJson?.subscription?.character_count;
+      log(`✅ Account valid. User: ${userJson?.user_id ?? 'unknown'}`, 'success');
+      if (userJson?.xi_api_key === null) {
+        log('⚠️ xi_api_key is null in response — this is the known account bug', 'warn');
+        log('   This is a server-side ElevenLabs issue, not your code', 'warn');
+      }
+      if (charLeft !== undefined) {
+        log(`ℹ️ Characters remaining: ${charLeft}`, charLeft > 0 ? 'success' : 'error');
+        if (charLeft <= 0) { log('❌ No characters left — quota exhausted', 'error'); done(btn); return; }
+      }
+    }
+  } catch (err) {
+    log(`❌ Network error on /v1/user: ${err.message}`, 'error');
+    log('   Could be CORS, network, or DNS issue', 'warn');
+    done(btn); return;
+  }
+
+  // ── Step 3: Voice list ─────────────────────────────────────────────────────
+  log('', 'info');
+  log('STEP 3 — Checking voice ID via /v1/voices', 'info');
+  try {
+    const voicesRes = await fetch('https://api.elevenlabs.io/v1/voices', {
+      headers: { 'xi-api-key': apiKey }
+    });
+    if (voicesRes.ok) {
+      const voicesJson = await voicesRes.json();
+      const match = voicesJson.voices?.find(v => v.voice_id === voiceId);
+      if (match) {
+        log(`✅ Voice found: "${match.name}" (${voiceId})`, 'success');
+      } else {
+        log(`⚠️ Voice ID ${voiceId} not found in your voice list`, 'warn');
+        log(`   Available IDs: ${voicesJson.voices?.slice(0,3).map(v=>v.voice_id).join(', ')}...`, 'info');
+      }
+    } else {
+      log(`⚠️ /v1/voices returned ${voicesRes.status}`, 'warn');
+    }
+  } catch (err) {
+    log(`⚠️ Could not fetch voice list: ${err.message}`, 'warn');
+  }
+
+  // ── Step 4: TTS call ───────────────────────────────────────────────────────
+  log('', 'info');
+  log('STEP 4 — TTS API call', 'info');
+  log(`POST https://api.elevenlabs.io/v1/text-to-speech/${voiceId}`, 'info');
+
+  const body = {
+    text: text,
+    model_id: 'eleven_turbo_v2_5',
+    voice_settings: { stability: 0.5, similarity_boost: 0.75 }
+  };
+  log(`Request body: ${JSON.stringify(body).slice(0, 200)}`, 'info');
+
+  try {
+    const ttsRes = await fetch(`https://api.elevenlabs.io/v1/text-to-speech/${voiceId}`, {
+      method: 'POST',
+      headers: {
+        'xi-api-key': apiKey,
+        'Content-Type': 'application/json',
+        'Accept': 'audio/mpeg'
+      },
+      body: JSON.stringify(body)
+    });
+
+    log(`HTTP status: ${ttsRes.status} ${ttsRes.statusText}`, ttsRes.ok ? 'success' : 'error');
+
+    // Log all response headers for debugging
+    const headers = {};
+    ttsRes.headers.forEach((v, k) => { headers[k] = v; });
+    log(`Response headers: ${JSON.stringify(headers).slice(0, 400)}`, 'info');
+
+    if (!ttsRes.ok) {
+      // Try to read error body
+      try {
+        const errText = await ttsRes.text();
+        log(`Error body: ${errText.slice(0, 500)}`, 'error');
+      } catch(e) {
+        log('Could not read error body', 'warn');
+      }
+
+      if (ttsRes.status === 401) log('❌ 401 — API key rejected at TTS endpoint', 'error');
+      else if (ttsRes.status === 422) log('❌ 422 — Unprocessable. Voice ID wrong or request malformed', 'error');
+      else if (ttsRes.status === 429) log('❌ 429 — Rate limited or quota exceeded', 'error');
+      else log(`❌ Unexpected status ${ttsRes.status}`, 'error');
+
+      done(btn); return;
+    }
+
+    // ── Step 5: Audio playback ───────────────────────────────────────────────
+    log('', 'info');
+    log('STEP 5 — Receiving audio blob', 'info');
+    const blob = await ttsRes.blob();
+    log(`✅ Blob received: ${blob.size} bytes, type: ${blob.type}`, 'success');
+
+    if (blob.size < 100) {
+      log('⚠️ Blob is suspiciously small — may be empty or error payload', 'warn');
+    }
+
+    const url = URL.createObjectURL(blob);
+    audioEl.src = url;
+    audioEl.style.display = 'block';
+
+    log('Attempting playback...', 'info');
+    try {
+      await audioEl.play();
+      log('✅ AUDIO PLAYING — ElevenLabs is working!', 'success');
+    } catch (playErr) {
+      log(`⚠️ Auto-play blocked: ${playErr.message}`, 'warn');
+      log('   Tap the audio player above to play manually', 'info');
+    }
+
+  } catch (err) {
+    log(`❌ TTS fetch failed: ${err.message}`, 'error');
+    if (err.message.includes('CORS') || err.message.includes('NetworkError') || err.message.includes('Failed to fetch')) {
+      log('   This looks like a CORS or network block', 'warn');
+      log('   From Vercel (HTTPS) this should work — check if key is valid', 'warn');
+    }
+  }
+
+  done(btn);
+}
+
+function done(btn) {
+  btn.disabled = false;
+  btn.textContent = 'Run Diagnostic Test';
+  log('', 'info');
+  log('── Test complete ──', 'info');
+}
+
+function testBrowserTTS() {
+  log('', 'info');
+  log('BROWSER TTS — baseline test', 'info');
+  if (!('speechSynthesis' in window)) {
+    log('❌ speechSynthesis not available in this browser', 'error');
+    return;
+  }
+  const text = document.getElementById('testText').value.trim();
+  const utt = new SpeechSynthesisUtterance(text);
+  utt.onstart = () => log('✅ Browser TTS started speaking', 'success');
+  utt.onend = () => log('✅ Browser TTS finished', 'success');
+  utt.onerror = (e) => log(`❌ Browser TTS error: ${e.error}`, 'error');
+  window.speechSynthesis.speak(utt);
+  log('Browser TTS fired — you should hear audio', 'info');
+}
+</script>
+</body>
+</html>
