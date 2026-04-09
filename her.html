@@ -494,18 +494,20 @@ function setupSpeechRecognition() {
 
 // ─── iOS AUDIO UNLOCK ─────────────────────────────────────────────────────────
 // iOS blocks audio.play() unless triggered from a user gesture.
-// We unlock it on the first SPEAK tap by playing a silent buffer via AudioContext.
+// We unlock it on the first SPEAK tap and reuse the same AudioContext for all playback.
+let audioCtx = null;
 let audioUnlocked = false;
+
 function unlockAudio() {
   if (audioUnlocked) return;
   try {
-    const ctx = new (window.AudioContext || window.webkitAudioContext)();
-    const buf = ctx.createBuffer(1, 1, 22050);
-    const src = ctx.createBufferSource();
+    audioCtx = new (window.AudioContext || window.webkitAudioContext)();
+    const buf = audioCtx.createBuffer(1, 1, 22050);
+    const src = audioCtx.createBufferSource();
     src.buffer = buf;
-    src.connect(ctx.destination);
+    src.connect(audioCtx.destination);
     src.start(0);
-    ctx.resume();
+    audioCtx.resume();
     audioUnlocked = true;
     console.log('Audio unlocked for iOS');
   } catch(e) { console.warn('Audio unlock failed:', e); }
@@ -723,7 +725,24 @@ async function speakText(text) {
 
 
 function playAudio(url) {
-  return new Promise((resolve) => {
+  return new Promise(async (resolve) => {
+    // If we have an AudioContext (iOS), decode and play through it
+    if (audioCtx) {
+      try {
+        const response = await fetch(url);
+        const arrayBuffer = await response.arrayBuffer();
+        const audioBuffer = await audioCtx.decodeAudioData(arrayBuffer);
+        const source = audioCtx.createBufferSource();
+        source.buffer = audioBuffer;
+        source.connect(audioCtx.destination);
+        source.onended = resolve;
+        source.start(0);
+        return;
+      } catch(e) {
+        console.warn('AudioContext playback failed, trying Audio element:', e);
+      }
+    }
+    // Fallback: standard Audio element (works on desktop)
     const audio = new Audio(url);
     audio.onended = resolve;
     audio.onerror = resolve;
