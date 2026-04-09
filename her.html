@@ -573,7 +573,15 @@ async function startVision() {
     video.srcObject = visionStream;
 
     // Wait for video to be ready
-    await new Promise(resolve => { video.onloadedmetadata = resolve; });
+    await video.play();
+
+    // Wait for frames to actually start rendering (currentTime > 0)
+    await new Promise(resolve => {
+      const check = () => video.currentTime > 0 ? resolve() : requestAnimationFrame(check);
+      check();
+    });
+    // Extra settle time for camera exposure
+    await new Promise(resolve => setTimeout(resolve, 1000));
     visionReady = true;
     console.log('Vision: camera ready');
 
