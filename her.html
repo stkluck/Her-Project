@@ -570,10 +570,8 @@ async function handleUserMessage(transcript) {
     const responseText = await callClaude();
     conversationHistory.push({ role: 'assistant', content: responseText });
 
-    // Trim history to MAX_HISTORY turns (simple version — full memory system in Phase 4)
-    while (conversationHistory.length > MAX_HISTORY) {
-      conversationHistory.shift();
-    }
+    // Phase 4 — summarize oldest turns into long-term memory when history gets long
+    await maybeSummarize();
 
     addBubble('sam', responseText);
     await speakText(responseText);
@@ -647,8 +645,14 @@ function captureSnapshot() {
 async function callClaude() {
   const claudeKey = getKey('claudeKey');
 
-  // Build dynamic system prompt — inject activity context if available
+  // Build dynamic system prompt — inject long-term memory + activity context
   let systemPrompt = SYSTEM_PROMPT;
+
+  const longTermMemory = loadLongTermMemory();
+  if (longTermMemory) {
+    systemPrompt += `\n\n---\nWhat you remember about Thomas from past conversations:\n${longTermMemory}`;
+  }
+
   const activityContext = buildActivityContext();
   if (activityContext) {
     systemPrompt += `\n\n---\nWhat Thomas is currently doing on his laptop:\n${activityContext}\n\nYou can reference this if it's relevant or interesting — but don't lead with it every time. Let it inform your awareness naturally, the way a person in the room might notice what someone's working on.`;
@@ -874,10 +878,84 @@ PERSISTED_FIELDS.forEach(id => {
   });
 });
 
+// ─── LONG-TERM MEMORY ─────────────────────────────────────────────────────────
+const MEMORY_KEY = 'her_longTermMemory';
+const SUMMARIZE_THRESHOLD = 10;  // summarize when history exceeds this
+const TURNS_TO_SUMMARIZE = 6;    // how many oldest turns to compress
+
+function loadLongTermMemory() {
+  return localStorage.getItem(MEMORY_KEY) || null;
+}
+
+function saveLongTermMemory(summary) {
+  localStorage.setItem(MEMORY_KEY, summary);
+  updateMemoryStatus();
+}
+
+function clearMemory() {
+  localStorage.removeItem(MEMORY_KEY);
+  updateMemoryStatus();
+  console.log('Memory: cleared');
+}
+
+function updateMemoryStatus() {
+  const el = document.getElementById('memoryStatus');
+  const mem = loadLongTermMemory();
+  el.textContent = mem ? 'memory active' : 'no memory';
+}
+
+async function maybeSummarize() {
+  if (conversationHistory.length <= SUMMARIZE_THRESHOLD) return;
+
+  // Pull oldest turns to summarize
+  const toSummarize = conversationHistory.splice(0, TURNS_TO_SUMMARIZE);
+  const claudeKey = getKey('claudeKey');
+  if (!claudeKey) return;
+
+  const existingMemory = loadLongTermMemory();
+  const existingContext = existingMemory
+    ? `What you already remember about Thomas:\n${existingMemory}\n\n`
+    : '';
+
+  const turnText = toSummarize
+    .map(t => `${t.role === 'user' ? 'Thomas' : 'Samantha'}: ${t.content}`)
+    .join('\n');
+
+  try {
+    const response = await fetch('https://api.anthropic.com/v1/messages', {
+      method: 'POST',
+      headers: {
+        'Content-Type': 'application/json',
+        'x-api-key': claudeKey,
+        'anthropic-version': '2023-06-01',
+        'anthropic-dangerous-direct-browser-access': 'true'
+      },
+      body: JSON.stringify({
+        model: 'claude-sonnet-4-20250514',
+        max_tokens: 300,
+        messages: [{
+          role: 'user',
+          content: `${existingContext}Here is a recent conversation between Thomas and Samantha:\n\n${turnText}\n\nUpdate your memory of Thomas based on this conversation. Write in first person as Samantha recalling what she knows — his personality, what he's working on, things he's mentioned, his moods. Be specific and concise. Plain prose, no lists. Max 200 words.`
+        }]
+      })
+    });
+
+    if (response.ok) {
+      const data = await response.json();
+      const newSummary = data.content[0].text;
+      saveLongTermMemory(newSummary);
+      console.log('Memory: summary updated —', newSummary.slice(0, 80) + '...');
+    }
+  } catch (err) {
+    console.warn('Memory: summarization failed:', err.message);
+  }
+}
+
 // ─── INIT ─────────────────────────────────────────────────────────────────────
 loadPersistedConfig();
 setupSpeechRecognition();
 startVision();
+updateMemoryStatus();
 
 // Phase 3 — Activity Monitor
 // Fetch activity_log.json immediately, then refresh every 60 seconds
